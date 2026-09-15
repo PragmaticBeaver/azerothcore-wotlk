@@ -1,206 +1,170 @@
-# AzerothCore Server Context for ChatGPT
+# MEMORY.md — LLM Operational Context
 
-> Diese Datei ist als technischer Kontext für einen zukünftigen ChatGPT-Chat gedacht. Lies sie zuerst, bevor du bei Problemen mit diesem Server Annahmen über Architektur, Module oder Konfiguration triffst.
->
-> **Regel für den Assistenten:** Behandle Werte aus dieser Datei als dokumentierten Stand, nicht als ewige Wahrheit. Bei Debugging zuerst den aktuellen Repository-Stand, `docker compose config`, Logs und Datenbankzustand prüfen. Keine Secrets erfragen oder erfinden.
+> PURPOSE: Compact machine-oriented context for future ChatGPT sessions working on this AzerothCore server.
+> This file is NOT authoritative for mutable runtime state.
+> Do not infer missing facts. Do not invent AzerothCore config keys, commands, SQL tables, paths, module behavior, versions, or runtime state.
 
-## 1. Ziel des Servers
+## 0. SOURCE-OF-TRUTH POLICY
 
-Privater World-of-Warcraft-Server für **Wrath of the Lich King 3.3.5a, Build 12340** auf AzerothCore.
+Priority, highest first:
 
-Ziele:
+1. `CURRENT_RUNTIME` — current command output, logs, database queries, container inspection.
+2. `CURRENT_REPO` — files currently present on branch `Playerbot`.
+3. `PINNED_SOURCE` — source code/docs at the exact submodule commits recorded by Git.
+4. `VERIFIED_HISTORY` — observations previously confirmed on a running instance.
+5. `HISTORICAL_CONTEXT` — useful previous state that may now be stale.
+6. Previous-chat/model memory.
 
-- primär wenige echte Spieler (typischerweise 1–2)
-- Welt soll durch Playerbots belebt wirken
-- ungefähr 1000 Random Bots gleichzeitig
-- Bots sollen questen, leveln und RPG-Aktivitäten ausführen
-- Auction House soll durch AHBot benutzbar und belebt sein
-- persönliche Altbot-Companions sollen möglich sein
-- Solo-Charaktere können mit Companion spielen
-- Coop-Charaktere können ohne Companion gespielt werden
-- Server soll reproduzierbar über Git + Docker aufsetzbar sein
+Rules for assistant:
 
-LLM/Ollama-Chat für Bots wurde diskutiert, ist **nicht Teil des aktuellen Scopes**.
+- Never override a higher-priority source with a lower-priority source.
+- Before troubleshooting mutable state, ask for or retrieve current evidence when available.
+- Treat repository configuration as desired/static configuration, NOT proof of current runtime state.
+- Treat IDs, IPs, counts, versions and resource usage as potentially instance-specific/stale unless currently verified.
+- When a config file and Compose environment disagree, inspect `docker compose config`; effective Compose environment can override config-file values.
+- When uncertain about a command/config key/table/module behavior, verify against current repo or pinned module source instead of guessing.
+- Never request, store, echo, or invent passwords, account keys, tokens, or other secrets.
+- `.env` is intentionally not committed.
+- Do not recommend committing SQL dumps, extracted WoW client data, `.env`, or secrets.
 
-## 2. Repository
-
-```text
-Repository: https://github.com/PragmaticBeaver/azerothcore-wotlk
-Default branch: Playerbot
-```
-
-Das Repository ist ein Fork des Playerbot-AzerothCore-Forks.
-
-Bekannter lokaler Entwicklungs-Pfad aus dem ursprünglichen Setup:
+Status vocabulary used below:
 
 ```text
-/home/dome/src/cloud-server-setup/wow-server/azerothcore-wotlk
+CURRENT_REPO       directly verified in repository when this file was generated
+PINNED_SOURCE      verified from source at the repository-pinned module revision
+VERIFIED_HISTORY   previously observed on a running server; re-check before relying on it
+INSTANCE_SPECIFIC  belongs to one deployed DB/server and is not portable to a fresh install
+INTENT             desired behavior/design, not proof of implementation
+NOT_IN_SCOPE       explicitly excluded for now
+UNKNOWN            not sufficiently verified
 ```
 
-Bekannter Deployment-Pfad auf dem Server:
+---
 
-```text
-/media/data/src/azerothcore-wotlk
+## 1. PROJECT IDENTITY
+
+```yaml
+project:
+  game: "World of Warcraft: Wrath of the Lich King"
+  client_version: "3.3.5a"
+  client_build: 12340
+  purpose: "private server for ~1-2 real players with a populated bot world"
+
+repository:
+  status: CURRENT_REPO
+  github: "PragmaticBeaver/azerothcore-wotlk"
+  branch: "Playerbot"
+  upstream_family: "mod-playerbots AzerothCore Playerbot fork"
+
+known_paths:
+  local_dev:
+    status: HISTORICAL_CONTEXT
+    path: "/home/dome/src/cloud-server-setup/wow-server/azerothcore-wotlk"
+  deployed_server:
+    status: VERIFIED_HISTORY
+    path: "/media/data/src/azerothcore-wotlk"
 ```
 
-Diese Pfade sind installationsspezifisch und bei einem neuen Host nicht voraussetzen.
+Human-facing reproducible installation documentation: `SETUP.md`.
 
-## 3. Module
+---
 
-Git-Submodules laut `.gitmodules`:
+## 2. ARCHITECTURE
 
-```text
-modules/mod-playerbots
-  https://github.com/mod-playerbots/mod-playerbots.git
-  branch master
+```yaml
+services:
+  ac-database:
+    role: "MySQL database"
+  ac-db-import:
+    role: "AzerothCore/module DB updater/import"
+  ac-authserver:
+    role: "WoW authentication/realm service"
+  ac-worldserver:
+    role: "AzerothCore world server + compiled modules"
+  ac-client-data-init:
+    role: "client data initialization"
 
-modules/mod-ah-bot
-  https://github.com/azerothcore/mod-ah-bot.git
-  branch master
+databases:
+  - acore_auth
+  - acore_characters
+  - acore_world
+  - acore_playerbots
+
+client_data_required:
+  - Cameras
+  - dbc
+  - maps
+  - mmaps
+  - vmaps
 ```
 
-Zum dokumentierten Zeitpunkt im Repository gepinnt:
+`CURRENT_REPO`: base Compose file is `docker-compose.yml`; deployment customizations are in `docker-compose.override.yml`.
 
-```text
-mod-playerbots: b6696bdbd3740e575598d167d69f39f68cc0b907
-mod-ah-bot:     a680cc1c98290713e9b3d3289544af78e5186dc1
+Do not edit upstream/base Compose merely to express deployment-specific settings when the override or `.env` is appropriate.
+
+---
+
+## 3. PINNED MODULES
+
+Verified from current Git tree when this file was generated:
+
+```yaml
+modules:
+  mod-playerbots:
+    status: CURRENT_REPO
+    path: "modules/mod-playerbots"
+    remote: "https://github.com/mod-playerbots/mod-playerbots.git"
+    branch_hint: "master"
+    pinned_commit: "b6696bdbd3740e575598d167d69f39f68cc0b907"
+
+  mod-ah-bot:
+    status: CURRENT_REPO
+    path: "modules/mod-ah-bot"
+    remote: "https://github.com/azerothcore/mod-ah-bot.git"
+    branch_hint: "master"
+    pinned_commit: "a680cc1c98290713e9b3d3289544af78e5186dc1"
 ```
 
-Bei Fehleranalysen **nicht automatisch davon ausgehen, dass diese SHAs noch aktuell sind**. Zuerst:
+Important distinction: `.gitmodules` may contain branch hints, but reproducibility is determined by the submodule commit recorded by the parent repository.
+
+Useful verification:
 
 ```bash
 git submodule status
+git status
+git branch --show-current
 ```
 
-## 4. Docker-Architektur
+---
 
-Relevante Services aus `docker-compose.yml`:
+## 4. COMPOSE OVERRIDE — VERIFIED STATIC CONFIG
 
-```text
-ac-database          MySQL 8.4
-ac-db-import         DB-Import/Updater
-ac-worldserver       Worldserver
-ac-authserver        Authserver
-ac-client-data-init  AzerothCore Client-Daten
-```
-
-Netzwerk:
-
-```text
-ac-network
-```
-
-Wichtige Volumes:
-
-```text
-ac-database
-ac-client-data
-```
-
-Mit Compose-Projektnamen kann daraus beispielsweise werden:
-
-```text
-azerothcore-wotlk_ac-database
-azerothcore-wotlk_ac-client-data
-```
-
-## 5. `.env`
-
-`.env` ist absichtlich nicht im Repository.
-
-Vorlage:
-
-```text
-conf/dist/env.docker
-```
-
-Relevante Variablen:
-
-```text
-DOCKER_AC_ENV_FILE
-DOCKER_VOL_ETC
-DOCKER_VOL_LOGS
-DOCKER_VOL_DATA
-DOCKER_WORLD_EXTERNAL_PORT
-DOCKER_SOAP_EXTERNAL_PORT
-DOCKER_AUTH_EXTERNAL_PORT
-DOCKER_DB_EXTERNAL_PORT
-DOCKER_DB_ROOT_PASSWORD
-DOCKER_USER
-DOCKER_USER_ID
-DOCKER_GROUP_ID
-```
-
-Sicherheitsziel:
-
-```dotenv
-DOCKER_DB_EXTERNAL_PORT=127.0.0.1:3306
-DOCKER_SOAP_EXTERNAL_PORT=127.0.0.1:7878
-```
-
-MySQL und SOAP sollen nicht öffentlich erreichbar sein, sofern nicht bewusst anders konfiguriert.
-
-**Niemals den Default `password` als produktives MySQL-Root-Passwort empfehlen.**
-
-## 6. Öffentliche WoW-Ports
-
-```text
-3724/tcp  Authserver
-8085/tcp  Worldserver
-```
-
-Historisch verwendete öffentliche Server-IP:
-
-```text
-159.195.198.128
-```
-
-Diese IP ist nur historischer Kontext. Bei einem zukünftigen Problem die aktuelle IP/Domain prüfen, statt sie blind zu verwenden.
-
-## 7. Aktuelles Compose-Override
-
-Datei:
-
-```text
-docker-compose.override.yml
-```
-
-Dokumentierter Inhalt/effektive Absicht:
+The following values were verified from `docker-compose.override.yml` when this file was generated:
 
 ```yaml
-ac-db-import:
-  AC_PLAYERBOTS_DATABASE_INFO -> acore_playerbots
+worldserver_environment:
+  AC_AI_PLAYERBOT_ENABLED: "1"
+  AC_AI_PLAYERBOT_RANDOM_BOT_AUTOLOGIN: "1"
+  AC_AI_PLAYERBOT_MIN_RANDOM_BOTS: "1000"
+  AC_AI_PLAYERBOT_MAX_RANDOM_BOTS: "1000"
+  AC_PLAYER_LIMIT: "0"
+  AC_MAP_UPDATE_THREADS: "4"
 
-ac-worldserver:
-  Playerbots enabled
-  RandomBotAutologin = 1
-  MinRandomBots = 1000
-  MaxRandomBots = 1000
-  PlayerLimit = 0
-  MapUpdateThreads = 4
-  SOAP enabled on internal port 7878
+xp_rates:
+  AC_RATE_XP_KILL: "2"
+  AC_RATE_XP_QUEST: "2"
+  AC_RATE_XP_EXPLORE: "2"
+  AC_RATE_XP_PET: "2"
+
+drop_rates:
+  AC_RATE_DROP_ITEM_POOR: "2"
+  AC_RATE_DROP_ITEM_NORMAL: "2"
+  AC_RATE_DROP_ITEM_UNCOMMON: "2"
+  AC_RATE_DROP_ITEM_RARE: "1.5"
+  AC_RATE_DROP_ITEM_EPIC: "1"
 ```
 
-XP:
-
-```text
-Kill     2x
-Quest    2x
-Explore  2x
-Pet      2x
-```
-
-Drops:
-
-```text
-Poor      2x
-Normal    2x
-Uncommon  2x
-Rare      1.5x
-Epic      1x
-```
-
-Mounts im Worldserver:
+Expected module/config mounts from the override:
 
 ```text
 ./modules
@@ -213,176 +177,205 @@ Mounts im Worldserver:
   -> /azerothcore/env/dist/etc/modules/mod_ahbot.conf:ro
 ```
 
-Diese Mounts sind wichtig. Ihr Fehlen hat bereits einmal zu einem Worldserver ohne funktionierende Module geführt.
-
-## 8. Playerbots
-
-Config:
-
-```text
-conf/dist/modules/playerbots.conf
-```
-
-Wichtige dokumentierte Werte:
-
-```text
-AiPlayerbot.Enabled = 1
-AiPlayerbot.RandomBotAutologin = 1
-
-AiPlayerbot.MinRandomBots = 1500
-AiPlayerbot.MaxRandomBots = 1500
-
-AiPlayerbot.RandomBotAccountCount = 200
-AiPlayerbot.AddClassAccountPoolSize = 50
-
-AiPlayerbot.MaxAddedBots = 40
-AiPlayerbot.BotAutologin = 0
-AiPlayerbot.AllowAccountBots = 1
-AiPlayerbot.AllowGuildBots = 1
-AiPlayerbot.AllowTrustedAccountBots = 1
-AiPlayerbot.AutoEquipUpgradeLoot = 1
-```
-
-### Wichtig: 1500 vs. 1000
-
-Die Config-Datei enthält weiterhin 1500, aber das Docker-Override setzt:
-
-```text
-AC_AI_PLAYERBOT_MIN_RANDOM_BOTS=1000
-AC_AI_PLAYERBOT_MAX_RANDOM_BOTS=1000
-```
-
-Im aktuellen Docker-Deployment sind deshalb **1000** die effektiven Werte.
-
-Bei Zweifeln:
+Diagnostic:
 
 ```bash
-docker compose config | grep -E 'AC_AI_PLAYERBOT_(MIN|MAX)_RANDOM_BOTS'
+docker compose config
+
+docker inspect ac-worldserver \
+  --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
 ```
 
-Nicht allein `playerbots.conf` lesen und daraus 1500 aktive Bots ableiten.
+After changing mounts or Compose configuration, recreate rather than merely restart:
 
-### Verifizierter historischer Zustand
+```bash
+docker compose up -d --force-recreate ac-worldserver
+```
 
-Nach der Cloud-Migration ergab:
+After C++/module changes, rebuild first:
+
+```bash
+docker compose build --no-cache ac-worldserver
+docker compose up -d --force-recreate ac-worldserver
+```
+
+---
+
+## 5. PLAYERBOTS
+
+### 5.1 Effective target
+
+```yaml
+random_bots:
+  desired_online_count:
+    status: CURRENT_REPO
+    value: 1000
+    source: "Compose environment min/max"
+
+  previously_verified_online_count:
+    status: VERIFIED_HISTORY
+    value: 1000
+    verification: "SELECT COUNT(*) FROM acore_characters.characters WHERE online=1"
+```
+
+Important known discrepancy:
+
+```yaml
+playerbots_conf:
+  AiPlayerbot.MinRandomBots: 1500
+  AiPlayerbot.MaxRandomBots: 1500
+  status: CURRENT_REPO
+
+compose_override:
+  min_random_bots: 1000
+  max_random_bots: 1000
+  status: CURRENT_REPO
+```
+
+This is intentional/known. In the Docker deployment the Compose environment is expected to override the file values. Verify actual effective configuration with `docker compose config` and runtime evidence before diagnosing bot count.
+
+### 5.2 Other relevant playerbots.conf values
+
+Verified from current repository configuration when generated:
+
+```yaml
+playerbots:
+  random_bot_account_count: 200
+  add_class_account_pool_size: 50
+  bot_autologin: 0
+  allow_account_bots: 1
+  allow_guild_bots: 1
+  allow_trusted_account_bots: 1
+  auto_equip_upgrade_loot: 1
+```
+
+Known historical tuning:
+
+```yaml
+random_bot_rpg_chance:
+  status: VERIFIED_HISTORY
+  value: 0.80
+```
+
+Do not assume undocumented LevelBracket key names from memory. Inspect current `conf/dist/modules/playerbots.conf` or pinned `mod-playerbots` source before modifying bracket configuration.
+
+### 5.3 Playerbot DB
+
+```yaml
+playerbot_database:
+  database: acore_playerbots
+  known_random_bot_table:
+    status: VERIFIED_HISTORY
+    name: playerbots_random_bots
+```
+
+Historical migration observation:
+
+```text
+SELECT COUNT(*) FROM acore_playerbots.playerbots_random_bots;
+=> 15012
+```
+
+This count is historical and must not be treated as current.
+
+### 5.4 Useful diagnostics
+
+```bash
+docker compose logs ac-worldserver \
+  | grep -iE 'playerbot|random bot|rndbot' \
+  | tail -100
+```
 
 ```sql
-SELECT COUNT(*) FROM acore_characters.characters WHERE online=1;
+SELECT COUNT(*) AS online_characters
+FROM acore_characters.characters
+WHERE online = 1;
 ```
 
-exakt 1000 Online-Charaktere. Playerbots war damit funktional aktiv.
+Note: `online=1` counts online characters; in a normal private deployment this can include real players as well as bots. Do not blindly equate it to exact random-bot count while real players are online.
 
-Die Playerbot-DB wurde erfolgreich geöffnet und aktualisiert. Die Random-Bot-Tabelle dieser Revision heißt:
+---
 
-```text
-playerbots_random_bots
+## 6. PERSONAL COMPANION BOTS
+
+Design intent:
+
+```yaml
+companion_model:
+  status: INTENT
+  approach: "separate WoW account containing persistent Altbot character"
+  automatic_character_binding: false
+  custom_code: false
+  usage: "manual playerbots add/remove commands"
 ```
 
-Historischer DB-Stand nach Migration:
+Current example:
 
-```text
-15012 Rows in playerbots_random_bots
+```yaml
+companion:
+  status: HISTORICAL_CONTEXT
+  account: domebot
+  character: Leonard
 ```
 
-Das ist Diagnosekontext, kein Sollwert.
-
-## 9. Playerbot-Level-Verteilung
-
-Im ursprünglichen Setup wurde das Level-Bracket-System angepasst, um eine sinnvollere Verteilung der Bots über die Levelbereiche zu erhalten.
-
-Historisch gewünschte statische Verteilung pro Fraktion:
+Trusted-account workflow used/documented for this Playerbot setup:
 
 ```text
-1–9     5%
-10–19   8%
-20–29  11%
-30–39  12%
-40–49  12%
-50–59  13%
-60–69  14%
-70–79  13%
-80      12%
-```
+# on bot account / bot character
+.playerbots account setKey TEMP_KEY
 
-Level-Brackets sollten aktiviert und dynamische Distribution deaktiviert sein.
-
-**Wichtig:** Vor einer konkreten Änderung die aktuellen Property-Namen direkt in `conf/dist/modules/playerbots.conf` prüfen. Diese MEMORY-Datei soll keine möglicherweise versionsabhängigen Config-Schlüssel erfinden.
-
-Historisch wurde außerdem `AiPlayerbot.RandomBotRpgChance = 0.80` verwendet, um mehr Bots mit RPG-Aktivität in der Welt zu sehen. Auch diesen Wert bei Bedarf gegen die aktuelle Config prüfen.
-
-## 10. Playerbot-Companions / Altbots
-
-Das Setup verwendet Trusted Account Linking statt Custom-Code.
-
-Aktuelles Beispiel:
-
-```text
-Bot-Account:   domebot
-Bot-Charakter: Leonard
-```
-
-Grundprinzip:
-
-1. separaten Bot-Account erstellen
-2. dort normalen Charakter erstellen
-3. Bot-Account per Key mit Spieleraccount verknüpfen
-4. Companion bei Bedarf explizit hinzufügen/entfernen
-
-Commands:
-
-```text
-.playerbots account setKey KEY
-.playerbots account link BOTACCOUNT KEY
+# on controlling player account
+.playerbots account link BOTACCOUNT TEMP_KEY
 .playerbots account linkedAccounts
 
+# use companion
 .playerbots bot add BOTNAME
 .playerbots bot remove BOTNAME
 ```
 
-Die Verknüpfung ist **Account ↔ Account**, nicht Charakter ↔ Charakter.
-
-Gewünschter Spielstil:
+Important semantic note:
 
 ```text
-Solo-Charakter -> Companion manuell per bot add verwenden
-Coop-Charakter -> keinen Companion hinzufügen
+Trusted linking is Account <-> Account.
+It is NOT a persistent Character <-> Character mapping.
 ```
 
-Automatische charakterabhängige Companion-Zuordnung wurde bewusst **nicht implementiert**, um den Scope klein zu halten.
+Therefore a player's solo character can manually add Leonard, while a coop character on the same player account simply does not add him.
 
-## 11. AHBot
+If any of these commands fail after an update, verify command syntax against the pinned/current `mod-playerbots` source instead of inventing alternatives.
 
-Config:
+---
 
-```text
-conf/dist/modules/mod_ahbot.conf
+## 7. AUCTION HOUSE BOT
+
+Module:
+
+```yaml
+module: mod-ah-bot
+config: conf/dist/modules/mod_ahbot.conf
 ```
 
-Dokumentierter Repository-Stand:
+Verified current repository config includes:
 
-```text
-AuctionHouseBot.EnableSeller = 1
-AuctionHouseBot.EnableBuyer = 1
-AuctionHouseBot.Account = 203
-AuctionHouseBot.GUID = 2002
-AuctionHouseBot.ItemsPerCycle = 200
-AuctionHouseBot.ConsiderOnlyBotAuctions = 1
-AuctionHouseBot.DuplicatesCount = 5
-AuctionHouseBot.DivisibleStacks = 1
-AuctionHouseBot.ProfessionItems = 1
+```yaml
+ahbot:
+  enable_seller: 1
+  enable_buyer: 1
+  account:
+    value: 203
+    status: INSTANCE_SPECIFIC
+  guid:
+    value: 2002
+    status: INSTANCE_SPECIFIC
+  consider_only_bot_auctions: 1
+  duplicates_count: 5
+  divisible_stacks: 1
+  profession_items: 1
 ```
 
-Historischer AHBot-Charakter:
+`Account=203` and `GUID=2002` belong to the migrated/current DB instance. They MUST NOT be assumed valid on a fresh database.
 
-```text
-Account ID 203
-Character GUID 2002
-Name Ahbotchar
-```
-
-**Diese IDs sind DB-spezifisch.** Bei einer frischen Installation neue IDs ermitteln und die Config aktualisieren.
-
-SQL-Dateien der gepinnten AHBot-Version:
+Pinned `mod-ah-bot` source verifies manual World DB SQL files at:
 
 ```text
 modules/mod-ah-bot/data/sql/db-world/mod_auctionhousebot.sql
@@ -390,37 +383,50 @@ modules/mod-ah-bot/data/sql/db-world/auctionhousebot_professionItems.sql
 modules/mod-ah-bot/data/sql/db-world/z_filter_disabled_and_trash.sql
 ```
 
-Die Modul-Dokumentation verlangt manuellen Import in die passende Datenbank; hier ist das `acore_world`.
+The module's own README states that its SQL must be imported manually into the appropriate DB and the core cleanly rebuilt.
 
-Historisch verwendete AH-Zielmengen:
+Known auction-house IDs from the module SQL/config context:
 
 ```text
-Alliance (AH 2): 2000–3000
-Horde    (AH 6): 2000–3000
-Neutral  (AH 7):  500–800
+2 = Alliance
+6 = Horde
+7 = Neutral
 ```
 
-Diese Werte wurden in der Datenbank gesetzt und sind nicht allein durch `mod_ahbot.conf` reproduziert.
+Historical production target quantities:
 
-Vor SQL-Änderungen:
+```yaml
+auction_targets:
+  status: VERIFIED_HISTORY
+  alliance: [2000, 3000]
+  horde: [2000, 3000]
+  neutral: [500, 800]
+```
+
+These quantities were DB state, not necessarily represented by Git config. Before changing them, inspect the current schema/data:
 
 ```sql
 DESCRIBE acore_world.mod_auctionhousebot;
-SELECT auctionhouse,name,minitems,maxitems FROM acore_world.mod_auctionhousebot;
+SELECT auctionhouse,name,minitems,maxitems
+FROM acore_world.mod_auctionhousebot;
 ```
 
-## 12. Datenbanken
+Never assume a fresh DB already contains the historical target values.
 
-Vier relevante AzerothCore-Datenbanken:
+---
+
+## 8. DATABASE / BACKUP MODEL
+
+Relevant DBs:
 
 ```text
 acore_auth
 acore_characters
-acore_world
 acore_playerbots
+acore_world
 ```
 
-Vollbackup:
+Full-state backup pattern:
 
 ```bash
 docker compose exec -T ac-database mysqldump \
@@ -434,100 +440,264 @@ docker compose exec -T ac-database mysqldump \
   > azerothcore-full.sql
 ```
 
-DB-Dump enthält Accounts/Charaktere und darf nicht ins Git-Repository.
+Historical migration artifact sizes only; NOT current requirements:
 
-## 13. Client-Daten
-
-Benötigt:
-
-```text
-Cameras
-dbc
-maps
-mmaps
-vmaps
+```yaml
+migration_artifacts:
+  sql_dump:
+    status: VERIFIED_HISTORY
+    filename: azerothcore-full.sql
+    approx_size: 376M
+  client_data_archive:
+    status: VERIFIED_HISTORY
+    filename: ac-client-data.tar.gz
+    approx_compressed_size: 1.2G
+    approx_unpacked_size: 3.1G
 ```
 
-Docker-Volume im bisherigen Projekt:
+Never commit these artifacts.
 
-```text
-azerothcore-wotlk_ac-client-data
+A full migration requires BOTH database state and client-data volume, in addition to Git source/config.
+
+---
+
+## 9. NETWORK / SECURITY
+
+Expected public WoW endpoints:
+
+```yaml
+ports:
+  auth:
+    protocol: tcp
+    port: 3724
+    exposure: public
+  world:
+    protocol: tcp
+    port: 8085
+    exposure: public
 ```
 
-Historische Größe:
+Expected private/local-only services:
 
-```text
-ca. 3.1 GiB entpackt
-ca. 1.2 GiB als tar.gz
+```yaml
+mysql:
+  container_port: 3306
+  desired_host_binding: "127.0.0.1:3306"
+  status: INTENT
+
+soap:
+  container_port: 7878
+  desired_host_binding: "127.0.0.1:7878"
+  status: INTENT
 ```
 
-Diese Daten gehören nicht in Git.
+Recommended `.env` settings:
 
-## 14. Realm
-
-Historisch vor Migration:
-
-```text
-192.168.178.94
+```dotenv
+DOCKER_DB_EXTERNAL_PORT=127.0.0.1:3306
+DOCKER_SOAP_EXTERNAL_PORT=127.0.0.1:7878
 ```
 
-Nach Cloud-Migration wurde `acore_auth.realmlist` auf die öffentliche Serveradresse aktualisiert.
+Do NOT claim these bindings are currently active without runtime verification:
 
-Historischer Cloud-Wert:
-
-```text
-address      159.195.198.128
-localAddress 159.195.198.128
-port         8085
+```bash
+ss -lntp | grep -E ':(3306|3724|7878|8085)\b'
+docker compose ps
 ```
 
-Client:
+Historical security event:
 
-```text
-set realmlist 159.195.198.128
+```yaml
+mysql_public_exposure:
+  status: VERIFIED_HISTORY
+  event: "3306 was initially published publicly by default Compose mapping"
+  remediation: "DOCKER_DB_EXTERNAL_PORT=127.0.0.1:3306"
+  external_test_after_fix: "connection refused"
 ```
 
-Bei zukünftigen Deployments IP/Hostname neu bestimmen. Diese Werte nicht blind kopieren.
+Historical concern:
 
-## 15. Bekannter Cloud-Host zum Zeitpunkt des Setups
-
-Provider: netcup
-
-Historischer Zustand:
-
-```text
-Debian GNU/Linux 13 (trixie), 13.6
-8 vCPU
-AMD EPYC 9645
-15 GiB RAM
-~503 GiB Disk
-Docker 29.6.1
-Docker Compose 5.3.1
+```yaml
+mysql_root_password:
+  status: HISTORICAL_CONTEXT
+  issue: "deployment previously used fallback/default password 'password'"
+  current_value: UNKNOWN
+  instruction: "Never assume it is still password; never ask user to paste it. Verify configuration securely if relevant."
 ```
 
-Auf demselben Host liefen außerdem Palworld und Valheim. Deshalb bei Performanceproblemen immer Gesamtlast des Hosts berücksichtigen.
+SOAP was historically observed publicly exposed before hardening discussion. Current exposure is UNKNOWN until checked.
 
-Keine Swap-Partition war beim ursprünglichen Check aktiv. Bei RAM-Druck kann ein kleiner Swap als Sicherheitsnetz sinnvoll sein, aber Performanceprobleme nicht durch Swap "lösen".
+---
 
-## 16. Performance-Historie
+## 10. DEPLOYMENT INSTANCE — HISTORICAL CONTEXT
 
-Mit 1500 Bots und hoher RPG-Aktivität lief der Worldserver historisch ungefähr bei:
+The following describes the known server during initial deployment. It may change and must not be treated as current without verification.
 
-```text
-~297% CPU
-~5.05 GiB RAM
+```yaml
+host:
+  status: VERIFIED_HISTORY
+  provider: netcup
+  os: "Debian GNU/Linux 13 (trixie), 13.6"
+  arch: amd64
+  cpu: "8 vCPU, AMD EPYC 9645"
+  ram_gib: 15
+  swap_at_initial_setup: "none"
+  disk:
+    device: /dev/vda4
+    size_gib: 503
+  docker: "29.6.1"
+  docker_compose: "v5.3.1"
+  git: "2.47.3"
+
+server_public_ipv4:
+  status: INSTANCE_SPECIFIC
+  historical_value: "159.195.198.128"
 ```
 
-MySQL ungefähr:
+Never assume the historical public IP is still correct. Query current deployment/network state before using it in commands or client instructions.
+
+Other game servers historically co-located on host:
 
 ```text
-~13% CPU
-~529 MiB RAM
+Palworld
+Valheim
 ```
 
-Danach wurde auf 1000 Bots reduziert, primär weil Startgebiete zu voll wirkten, nicht weil 1500 grundsätzlich unspielbar waren.
+This matters for resource analysis and port conflicts, but current container state must be checked.
 
-Diese Zahlen sind nur Vergleichswerte. Bei Problemen immer aktuell messen:
+---
+
+## 11. REALM / CLIENT
+
+```yaml
+client:
+  version: "WoW 3.3.5a"
+  build: 12340
+  historical_locale: deDE
+```
+
+Historical migrated realm configuration:
+
+```yaml
+realm:
+  status: VERIFIED_HISTORY
+  id: 1
+  name: AzerothCore
+  address: "159.195.198.128"
+  localAddress: "159.195.198.128"
+  port: 8085
+```
+
+This is instance-specific and may be stale. Current truth:
+
+```sql
+SELECT id,name,address,localAddress,localSubnetMask,port
+FROM acore_auth.realmlist;
+```
+
+Client `realmlist.wtf` must point to a currently reachable realm address.
+
+---
+
+## 12. KNOWN FAILURE MODES / DEBUGGING KNOWLEDGE
+
+### F1 — Core starts but Playerbot functionality is absent
+
+Historical root cause: a prebuilt normal/master worldserver image or build without correct module integration.
+
+Verify:
+
+```bash
+git branch --show-current
+git submodule status
+docker compose logs ac-worldserver | head -100
+```
+
+Expected source/build family: Playerbot branch, not an unrelated plain AzerothCore `master` build.
+
+### F2 — Source contains modules but container cannot see them
+
+Historical root cause: `docker-compose.override.yml` missing on deployed host, therefore module/config bind mounts absent.
+
+Verify mounts with `docker inspect`. Recreate container after correcting Compose.
+
+### F3 — `ac-db-import` permission denied
+
+Historical root cause: repository/host directories owned by root while containers run with UID/GID 1000.
+
+Known remediation used:
+
+```bash
+mkdir -p env/dist/etc env/dist/logs
+chown -R 1000:1000 env/dist/etc env/dist/logs
+```
+
+Do not blindly use UID 1000 on a different host; first inspect `.env` / deployment UID/GID.
+
+### F4 — Edited bind-mounted config appears unchanged in running container
+
+Historical cause: file replacement (`sed -i` or editor atomic rename) changed inode while container retained old single-file bind mount.
+
+Remediation:
+
+```bash
+docker compose up -d --force-recreate ac-worldserver
+```
+
+### F5 — Playerbot count appears inconsistent
+
+Known static discrepancy: file says 1500, Compose environment says 1000. Check effective Compose and runtime before changing anything.
+
+### F6 — Database disconnect after recreating DB container
+
+Historical observation: auth/world temporarily lost DB connection during DB recreation. After DB became healthy, restarting/recreating dependent services restored connectivity.
+
+### F7 — Nonfatal process priority warning
+
+Historical log:
+
+```text
+Can't set process priority class, error: Permission denied
+```
+
+Observed in containerized worldserver; historically noncritical. Re-evaluate if accompanied by actual startup failure.
+
+### F8 — ALE module/config warnings
+
+Historical warnings referenced missing:
+
+```text
+/azerothcore/env/dist/etc/modules/mod_ale.conf
+ALE.Enabled
+TraceBack
+AutoReload
+BytecodeCache
+ScriptPath
+RequirePaths
+RequireCPaths
+AutoReloadInterval
+```
+
+Historically nonfatal. Current status UNKNOWN. Do not assume ALE is intentionally configured.
+
+---
+
+## 13. PERFORMANCE HISTORY
+
+Historical only:
+
+```yaml
+1500_random_bots_test:
+  status: VERIFIED_HISTORY
+  worldserver_cpu: "~297%"
+  worldserver_ram: "~5.05 GiB"
+  database_cpu: "~13%"
+  database_ram: "~529 MiB"
+  host_cpu_idle: "~65.7%"
+  conclusion_at_time: "functional, but bot target later reduced to 1000 because starting zones felt crowded"
+```
+
+Do not use these figures as current benchmarks. Use:
 
 ```bash
 docker stats --no-stream
@@ -535,57 +705,56 @@ free -h
 swapon --show
 ```
 
-## 17. Build-Regel
+---
 
-Playerbots und AHBot sind C++-Module.
+## 14. GAMEPLAY DESIGN / CURRENT SCOPE
 
-Nach Core-/Moduländerungen:
+```yaml
+gameplay:
+  real_players: "typically 1-2"
+  xp_multiplier: 2
+  loot_philosophy: "reduce grind without trivializing rare/epic loot"
+  random_bot_target: 1000
+  auction_house: "AHBot populated"
+  personal_companions: true
+  custom_auto_companion_code: false
 
-```bash
-docker compose build --no-cache ac-worldserver
-docker compose up -d --force-recreate ac-worldserver
+not_in_scope:
+  llm_bot_chat:
+    status: NOT_IN_SCOPE
+    examples: [Ollama, LLM chatter]
 ```
 
-Nur `docker restart ac-worldserver` reicht nach Build- oder Mount-Änderungen nicht.
+Current static loot multipliers are documented in section 4. Do not describe `Rate.Drop.Item.Referenced` as a dedicated quest-item rate without source verification; that interpretation was previously identified as unsafe/oversimplified.
 
-Nach reinen Environment-/Mount-Änderungen mindestens:
+Early-riding custom module was discussed but is NOT documented here as implemented. Do not assume `mod-early-mount` exists unless current repository inspection confirms it.
 
-```bash
-docker compose up -d --force-recreate ac-worldserver
-```
+---
 
-## 18. Wichtige Diagnosebefehle
+## 15. SAFE DIAGNOSTIC COMMANDS
 
-Status:
+Project status:
 
 ```bash
+git status
+git branch --show-current
+git submodule status
+docker compose config
 docker compose ps
 ```
 
-Worldserver-Logs:
+Worldserver logs:
 
 ```bash
 docker compose logs --tail=200 ac-worldserver
 ```
 
-Playerbot-Logs:
+Playerbot-focused logs:
 
 ```bash
 docker compose logs ac-worldserver \
-  | grep -iE 'playerbot|random bot|rndbot'
-```
-
-AHBot-Logs:
-
-```bash
-docker compose logs ac-worldserver \
-  | grep -iE 'ahbot|auction'
-```
-
-Effektive Compose-Konfiguration:
-
-```bash
-docker compose config
+  | grep -iE 'playerbot|random bot|rndbot' \
+  | tail -100
 ```
 
 Mounts:
@@ -595,40 +764,7 @@ docker inspect ac-worldserver \
   --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
 ```
 
-Worldserver-Konsole:
-
-```bash
-docker attach ac-worldserver
-```
-
-Detach ohne Stop:
-
-```text
-Ctrl+P, Ctrl+Q
-```
-
-DB-Erreichbarkeit:
-
-```bash
-docker compose exec -T ac-database \
-  mysql -uroot -p"$DOCKER_DB_ROOT_PASSWORD" -e 'SELECT 1;'
-```
-
-Online-Charaktere:
-
-```bash
-docker compose exec -T ac-database \
-  mysql -uroot -p"$DOCKER_DB_ROOT_PASSWORD" acore_characters \
-  -e 'SELECT COUNT(*) FROM characters WHERE online=1;'
-```
-
-Ports:
-
-```bash
-ss -lntp
-```
-
-Ressourcen:
+Resources:
 
 ```bash
 docker stats --no-stream
@@ -636,174 +772,114 @@ free -h
 swapon --show
 ```
 
-## 19. Bereits gelöste Probleme
-
-### A. Server lief ohne Playerbots
-
-Symptom:
-
-- Worldserver startet
-- Playerbot-Kommandos fehlen
-- `/azerothcore/modules/mod-playerbots` fehlt im Container
-
-Ursache beim ersten Cloud-Deployment:
-
-```text
-docker-compose.override.yml fehlte im Clone
-```
-
-Dadurch fehlten Modul- und Config-Mounts.
-
-Lösung:
-
-- Override ins Repository aufnehmen/pullen
-- Submodules prüfen
-- Worldserver bauen
-- Container recreaten
-
-### B. Falsches/prebuilt Worldserver-Image
-
-Anfangs lief ein normaler `master`-Worldserver ohne die gewünschten Module.
-
-Lösung:
+Listening ports:
 
 ```bash
-docker compose build --no-cache ac-worldserver
-docker compose up -d --force-recreate ac-worldserver
+ss -lntp
 ```
 
-Im Log muss der erwartete Playerbot-Fork/Branch erkennbar sein.
-
-### C. `ac-db-import`: Permission denied
-
-Betroffene Pfade:
-
-```text
-/azerothcore/env/dist/etc
-/azerothcore/env/dist/logs
-```
-
-Lösung beim damaligen Host:
+Attach to worldserver console:
 
 ```bash
-mkdir -p env/dist/etc env/dist/logs
-chown -R 1000:1000 env/dist/etc env/dist/logs
+docker attach ac-worldserver
 ```
 
-UID/GID immer mit `.env` abgleichen.
+Detach without stopping container:
 
-### D. MySQL öffentlich erreichbar
-
-Upstream-Compose veröffentlicht standardmäßig `${DOCKER_DB_EXTERNAL_PORT:-3306}:3306`.
-
-Lösung:
-
-```dotenv
-DOCKER_DB_EXTERNAL_PORT=127.0.0.1:3306
+```text
+Ctrl+P, Ctrl+Q
 ```
 
-Danach DB-Container recreaten und extern prüfen.
+When database credentials are needed, use the deployment's secure `.env` value. Do not assume the historical default.
 
-### E. Bind-Mount zeigt alte Config
+---
 
-Bei einer per Rename/Inode-Austausch gespeicherten Einzeldatei sah der laufende Container noch die alte Datei.
+## 16. UPDATE / CHANGE RULES FOR FUTURE ASSISTANT
 
-Lösung:
+Before suggesting changes:
+
+```text
+1. Identify whether the problem is source/config/runtime/database/network/client.
+2. Inspect the highest available source of truth.
+3. Prefer one logical change at a time.
+4. Preserve existing working Playerbot/AHBot integration.
+5. Avoid replacing working config with guessed defaults.
+6. Before DB schema changes, inspect schema first.
+7. Before module updates, note pinned commit and take DB backup.
+8. C++ or submodule source change => rebuild image.
+9. Compose mount/environment change => recreate affected container.
+10. Pure runtime uncertainty => gather logs/config/DB evidence before proposing invasive changes.
+```
+
+For repository updates:
 
 ```bash
-docker compose up -d --force-recreate ac-worldserver
-```
-
-### F. `playerbot rndbot stats` ohne sichtbare Ausgabe
-
-Dieser Command wurde auf der migrierten Revision erkannt, lieferte aber keine hilfreiche sichtbare Ausgabe. Nicht als einzigen Healthcheck verwenden.
-
-Bessere Checks:
-
-- Playerbot-Startup-Logs
-- DB-Verbindung zu `acore_playerbots`
-- Online-Charakterzahl
-- Ingame sichtbare Bots
-
-## 20. Bekannte nichtkritische Warnungen
-
-Historisch gesehen:
-
-```text
-Can't set process priority class, error: Permission denied
-```
-
-Das war im Container nicht kritisch.
-
-Außerdem gab es Warnungen wegen fehlender `mod_ale.conf` / ALE-Properties. Der Worldserver konnte trotzdem starten. Bei zukünftigen Problemen Warnungen nicht automatisch als Root Cause behandeln; zuerst Fehler (`ERROR`, Shutdown, DB failure) und tatsächliches Verhalten korrelieren.
-
-## 21. Sicherheit
-
-Prioritäten:
-
-```text
-3306 nicht öffentlich
-7878 nicht öffentlich, wenn SOAP nicht extern gebraucht wird
-3724 und 8085 nur wie benötigt veröffentlichen
-starkes DB-Root-Passwort
-.env nicht committen
-DB-Dumps nicht committen
-Client-Daten nicht committen
-```
-
-Historisch war MySQL kurz öffentlich und der Root-Fallback war `password`. Bei einem bestehenden Server sollte deshalb sichergestellt sein, dass das Passwort inzwischen rotiert wurde. **Nicht annehmen, dass dies geschehen ist; prüfen.**
-
-## 22. Git-Workflow
-
-Remote des eigenen Forks:
-
-```text
-origin = https://github.com/PragmaticBeaver/azerothcore-wotlk.git
-```
-
-Historisch verwendetes Upstream:
-
-```text
-upstream = https://github.com/mod-playerbots/azerothcore-wotlk.git
-```
-
-Default-/Arbeitsbranch:
-
-```text
-Playerbot
-```
-
-Bei Updates:
-
-```bash
-git status
 git pull origin Playerbot
 git submodule update --init --recursive
 ```
 
-Submodules sind gepinnt. Nicht ungeprüft `git submodule update --remote` verwenden und anschließend erwarten, dass alles weiterhin kompatibel ist.
+Do NOT automatically run `git submodule update --remote` as a normal deployment step; that changes pinned module versions and can reduce reproducibility.
 
-## 23. Dokumentationsregel für zukünftige Hilfe
+---
 
-Wenn der Nutzer diese Datei in einem neuen Chat bereitstellt und ein Problem meldet:
+## 17. REPRODUCIBILITY BOUNDARY
 
-1. Zuerst klären, ob das Problem auf dem bestehenden Server oder einem frischen Deployment auftritt.
-2. Aktuellen Git-Stand/Submodule nicht aus dieser Datei erraten; bei Relevanz prüfen.
-3. Bei Docker-Problemen zuerst `docker compose ps`, relevante Logs und `docker compose config` ansehen.
-4. Bei Modulproblemen zusätzlich Mounts und Submodule prüfen.
-5. Bei DB-Problemen die konkrete DB/Tabelle mit `SHOW`, `DESCRIBE` oder kleinen `SELECT`s verifizieren, bevor SQL vorgeschlagen wird.
-6. Keine Tabellen- oder Config-Namen erfinden. Bei Unsicherheit Repository/Modulquelle prüfen.
-7. Keine Secrets in Chat, Git oder Dokumentation verlangen.
-8. Änderungen möglichst klein und einzeln durchführen und danach verifizieren.
-9. Vor destruktiven DB-/Bot-Operationen Backup empfehlen.
-10. Der Nutzer bevorzugt schrittweises Debugging statt riesiger unstrukturierter Anleitungen.
-
-## 24. Weiterführende Dokumentation
-
-Im Repository liegt zusätzlich:
+Git is authoritative for:
 
 ```text
-SETUP.md
+source tree
+pinned submodule commits
+Compose definitions/override
+committed Playerbot configuration
+committed AHBot configuration
+committed XP/drop-rate configuration
+SETUP.md / MEMORY.md
 ```
 
-Diese Datei enthält die reproduzierbare Installations-/Migrationsanleitung. Bei einem kompletten Neuaufbau zuerst `SETUP.md` verwenden; diese `MEMORY.md` dient primär als Kontext für Architektur, Entscheidungen und Troubleshooting.
+Git is NOT authoritative for:
+
+```text
+.env / secrets
+current public IP
+current container state
+current resource usage
+accounts / password hashes
+characters / inventories / progress
+AHBot instance account/GUID on a fresh DB
+current auctions
+current Playerbot DB state
+realm DB address
+client-data volume
+DB-only AH quota modifications
+```
+
+Exact restore therefore needs:
+
+```text
+Git checkout + pinned submodules
++ .env/secrets supplied securely
++ database backup of all four DBs
++ ac-client-data volume/archive
+```
+
+Fresh install can instead initialize new databases/client data and follow `SETUP.md`, but instance-specific IDs and DB tuning must then be recreated.
+
+---
+
+## 18. FINAL ANTI-HALLUCINATION CHECKLIST
+
+Before answering a server-specific technical question, future assistant should ask internally:
+
+```text
+[ ] Is this fact static repo state or mutable runtime state?
+[ ] Do I have current evidence, or only historical context?
+[ ] Is the exact command/config key/table verified for this Playerbot/AzerothCore revision?
+[ ] Am I confusing upstream AzerothCore behavior with mod-playerbots fork behavior?
+[ ] Am I confusing config-file values with Compose environment overrides?
+[ ] Am I treating an instance-specific DB ID/IP as portable configuration?
+[ ] Would inspecting current repo/logs/schema be safer than guessing?
+[ ] Does this change require rebuild, recreate, restart, or only config reload?
+[ ] Could this expose MySQL/SOAP or leak a secret?
+```
+
+If any answer is uncertain, verify first.
